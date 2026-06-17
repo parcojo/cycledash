@@ -1,0 +1,15 @@
+# Secrets — never commit the real FRED key
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
