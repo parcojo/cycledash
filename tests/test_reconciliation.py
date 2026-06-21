@@ -1,8 +1,9 @@
 """Reconciliation: catch wrong/renamed FRED series IDs via accounting identities.
 
 Two layers:
-  * test_identity_synthetic — offline, no key/network. Validates the derivation
-    math against a fabricated frame.
+  * test_identity_synthetic / test_share_and_growth_transforms_synthetic —
+    offline, no key/network. Validate the derivation math and every view
+    transform (share + growth) against a fabricated frame.
   * test_reconciliation_live / test_core_additive_identity_live — hit FRED,
     skipped automatically when no FRED_API_KEY is available.
 
@@ -23,13 +24,25 @@ import pytest
 
 from indicators.gdp_cyclical import (
     CBI,
+    CYCLICAL,
+    CYCLICAL_SHARE,
+    CYCLICAL_SHARE_ROC,
+    DURABLES,
+    EQUIPMENT,
     GCE,
     GDP,
     NETEXP,
+    NONCYCLICAL,
+    PCEDG,
     PNFI,
     PRFI,
+    RESIDENTIAL,
     SERIES_IDS,
     compute_levels,
+    transform_component_shares,
+    transform_cyclical_share,
+    transform_cyclical_share_roc,
+    transform_growth,
 )
 
 TOL = 0.005  # 0.5%
@@ -81,6 +94,36 @@ def test_identity_synthetic() -> None:
     # Stronger additive identity: core == PCE + PNFI + PRFI + GCE.
     rhs = lv["PCE"] + lv[PNFI] + lv[PRFI] + lv[GCE]
     assert np.allclose(lv["core"], rhs)
+
+
+def test_share_and_growth_transforms_synthetic() -> None:
+    """Offline: the share + growth view transforms produce the expected columns
+    and values (no key/network)."""
+    raw = _synthetic_raw()
+    lv = compute_levels(raw)
+
+    # Cyclical share: single line, value == cyclical / GDP * 100.
+    cs = transform_cyclical_share(raw).sort_values("date")
+    assert set(cs["series_label"]) == {CYCLICAL_SHARE}
+    share = lv["cyclical"] / lv[GDP] * 100.0
+    assert np.allclose(cs["value"].to_numpy(), share.to_numpy())
+
+    # Rate of change: YoY (4q) point change of the share; first 4 quarters drop.
+    roc = transform_cyclical_share_roc(raw).sort_values("date")
+    assert set(roc["series_label"]) == {CYCLICAL_SHARE_ROC}
+    assert np.allclose(roc["value"].to_numpy(), share.diff(4).dropna().to_numpy())
+
+    # Component shares: three lines; spot-check durables == PCEDG / GDP * 100.
+    comp = transform_component_shares(raw)
+    assert set(comp["series_label"]) == {DURABLES, EQUIPMENT, RESIDENTIAL}
+    dg = comp[comp["series_label"] == DURABLES].sort_values("date")
+    assert np.allclose(dg["value"].to_numpy(), (lv[PCEDG] / lv[GDP] * 100.0).to_numpy())
+
+    # Growth: three lines (Core toggled in UI, always emitted here); first 4
+    # quarters dropped by the 4-quarter YoY shift.
+    g = transform_growth(raw)
+    assert set(g["series_label"]) == {CYCLICAL, NONCYCLICAL, "Core GDP"}
+    assert g["value"].notna().all()
 
 
 @needs_key

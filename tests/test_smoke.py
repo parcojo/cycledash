@@ -38,12 +38,13 @@ def test_fetch_non_empty() -> None:
 
 
 @needs_key
-def test_transform_columns_and_no_nans() -> None:
+def test_views_columns_and_no_nans() -> None:
     from fred_client import fetch
 
-    tidy = indicator.transform(fetch(SERIES_IDS))
-    assert list(tidy.columns) == ["date", "series_label", "value"]
-    assert set(tidy["series_label"]) == {"Cyclical", "Non-Cyclical", "Core GDP"}
-    # dropna in transform guarantees no NaN in the plotted range.
-    assert tidy["value"].notna().all()
-    assert not tidy.empty
+    raw = fetch(SERIES_IDS)
+    for view in indicator.views:
+        tidy = view.transform(raw)
+        assert list(tidy.columns) == ["date", "series_label", "value"], view.key
+        assert not tidy.empty, view.key
+        # dropna in the transforms guarantees no NaN in the plotted range.
+        assert tidy["value"].notna().all(), view.key
