@@ -131,3 +131,34 @@ This reconstructs EPB's *approach*; their exact line-item membership may differ 
 No real-dollar mode, no extra indicators, no alerting/email, no persistence layer, no auth, no custom theming, no Docker/devcontainer. Ship the three views of the one indicator, deployed on Community Cloud, tested.
 
 > Theming carve-out: one CSS rule trims Streamlit's oversized default top padding (`.block-container{padding-top:2rem}`) so the title sits near the top and the context strip fits on screen. Layout fix, not styling — the "no custom theming" line still holds for colors/fonts/etc.
+
+## 10. Backlog — labor-market indicators (post-v0, not in scope yet)
+The GDP indicator reads rate-sensitive *demand* but is blind to the labor market — exactly the dimension NBER weighs most, and the channel that turns a demand air-pocket into an official recession. Two future indicators would fill that gap. Each is a new module + one `REGISTRY` entry (the existing seam).
+
+**Unlock gate — start the labor work only once all three hold:**
+1. Deployed to Community Cloud, public URL verified on phone. — ✅ live as of 2026-06-21.
+2. Used through ≥1 real quarterly check-in, or a few days' soak: mobile layout readable, sleep/wake + data-refresh behave. — *in progress.*
+3. No known open bugs. — ✅ currently.
+
+Rationale: the deploy environment is the least-tested surface, and adding a second indicator before the first is proven in the wild is the "premature expansion" failure mode. Real usage also settles an open design choice below (YoY-growth vs share form for the labor split).
+
+### 10.1 `labor_sahm` — Sahm Rule recession trigger
+- **Why:** a pure labor signal *and* a near-real-time recession trigger, so it also patches the `USREC`-lags-in-real-time weakness (decision 8.4).
+- **Rule:** recession has historically begun once the 3-month average unemployment rate rises **≥ 0.5 pp** above its lowest 3-month average of the prior 12 months.
+- **Series:** `UNRATE` (monthly U-3). Optionally also fetch FRED's prebuilt `SAHMCURRENT` purely to validate the computed series in a reconciliation test (parallel to the GDP identity tests).
+- **Transform:**
+  ```
+  u3_3mo    = UNRATE.rolling(3).mean()
+  trail_min = u3_3mo.rolling(12).min().shift(1)   # lowest prior 12mo, excl. current
+  sahm      = u3_3mo - trail_min                   # plot; trigger hline at 0.5
+  ```
+- **View:** single line + a `0.5` threshold hline (reuse the existing hline/recession-band machinery). New wrinkle vs v0: it's **monthly**, so the quarter-start resample assumption needs a per-indicator override.
+
+### 10.2 `labor_cyclical` — cyclical vs non-cyclical *employment* (EPB labor split) — PLACEHOLDER
+- **Why:** the labor-side analogue of the GDP framework — split payroll employment into cycle-sensitive vs defensive industries and compare YoY growth, same as the GDP growth view. Cyclical employment rolls over before defensive.
+- **Exact line-item membership TBD** — confirm against the EPB video before building; treat the construction below as a faithful approximation, same caveat as the GDP indicator.
+- **Obvious construction to start from** (CES industry payrolls, monthly SA, FRED):
+  - *Cyclical:* construction `USCONS` + manufacturing `MANEMP` + temporary-help `TEMPHELPS` (the most rate/cycle-sensitive; temp help leads). Candidate add: trade/transport-warehousing.
+  - *Non-cyclical / defensive:* education & health `USEHS` + government `USGOVT` (candidate add: utilities).
+  - Plot YoY % growth of each bucket with recession shading — mirrors the GDP growth view.
+- **Open:** whether to express as YoY growth (matches GDP view) or as share-of-total-payrolls (matches the cyclical-share view); decide when building.
